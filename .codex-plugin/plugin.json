@@ -1,0 +1,37 @@
+{
+  "name": "dsh-sales",
+  "version": "0.1.0",
+  "description": "Evidence-backed sales operating system for qualification, deal progression, closing and revenue expansion.",
+  "author": {
+    "name": "Local developer"
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "sales",
+    "sales-operations",
+    "deal-review",
+    "pipeline",
+    "forecast",
+    "closing",
+    "revenue-expansion"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "销售成交",
+    "shortDescription": "从商机判断到成交和收入扩张的证据驱动销售操作系统。",
+    "longDescription": "dsh-sales 将 ICP、价值主张、报价和销售证据组织成可审计的销售流程：销售准备度、资格判断、商机推进、成交复盘、管道预测和复购扩单。它只读本地资料并生成可预览的方案，不修改 CRM、不联系客户、不替团队提交报价或承诺折扣。",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [
+      "Analyze",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "检查我的销售项目准备度，指出当前最大成交障碍。",
+      "分析这份商机管道，找出阶段定义和预测风险。",
+      "把这次客户机会整理成资格判断、推进计划和下一步。"
+    ]
+  }
+}

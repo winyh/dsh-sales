@@ -1,0 +1,13 @@
+- insert:
+    - id: dsh-sales
+      name: dsh-sales
+      config:
+        defaultRoot: "."
+        reportDir: ".dsh-sales/reports"
+        maxFiles: 500
+        maxRows: 100000
+        maxFileBytes: 1048576
+        maxTextChars: 180000
+        maxResultChars: 50000
+        defaultCurrency: "CNY"
+        defaultTimezone: "Asia/Shanghai"
