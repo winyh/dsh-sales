@@ -1,5 +1,9 @@
 # dsh-sales
 
+English | [中文](./README.zh.md)
+
+`dsh-sales` 是一个 DeepSeek Harness 插件，负责把已经确认的客户机会推进到可成交、可复盘、可预测和可扩张的销售运营层。
+
 `dsh-sales` is a DeepSeek Harness plugin for the commercial operating layer between qualified demand and repeatable revenue.
 
 It turns local Markdown, CSV, JSON and JSONL sales material into explainable sales readiness checks, pipeline analysis, deal qualification, offer reviews, weighted forecasts and previewable sales artifacts.
@@ -34,39 +38,48 @@ The six plugins work together to turn a real demand signal into a deliverable pr
 ```mermaid
 flowchart TB
     S["dsh-business<br/>Commercial strategy layer<br/>Value · model · pricing · profit"]
-    A["Demand<br/>dsh-idea"] --> B["Product<br/>dsh-product"]
-    B --> C["Marketing<br/>dsh-geo + dsh-growth"]
-    C --> D["Monetization execution<br/>dsh-sales"]
-    S -.-> A
-    S -.-> B
-    S -.-> C
-    S -.-> D
-    D --> F["Deals · renewals · revenue · cost feedback"]
-    F -->|Product iteration| B
-    F -->|New demand / opportunities| A
+
+    subgraph MAIN["Four-stage core flow"]
+        direction LR
+        A["1. Demand<br/>dsh-idea"] --> B["2. Product<br/>dsh-product"]
+        B --> C["3. Marketing<br/>dsh-geo + dsh-growth"]
+        C --> D["4. Monetization execution<br/>dsh-sales"]
+    end
+
+    S -. "Sets commercial direction and guardrails" .-> A
+    D --> R["Feedback<br/>Deals · renewals · revenue · cost"]
+    R -->|Product iteration| B
+    R -->|New demand / opportunities| A
+
+    classDef strategy fill:#FFF4D6,stroke:#B7791F,color:#5C4500
+    classDef stage fill:#E8F1FF,stroke:#3366CC,color:#173A7A
+    classDef feedback fill:#E8F7EE,stroke:#2F855A,color:#1C4532
+    class S strategy
+    class A,B,C,D stage
+    class R feedback
 ```
 
 This plugin is the execution owner for the monetization stage: it turns qualified marketing demand into purchases under sustainable terms, then feeds close, loss, discount, renewal and unmet-need evidence to [dsh-business](../dsh-business/README.md), [dsh-product](../dsh-product/README.md) and [dsh-idea](../dsh-idea/README.md).
 
-## 插件导航
+## Plugin Navigation
 
-| 插件 | 清晰分工 | 直接跳转 |
+| Plugin | Clear responsibility | Direct link |
 | --- | --- | --- |
-| dsh-idea | 外部机会、需求信号、候选方案和最小验证 | [README](../dsh-idea/README.md) |
-| dsh-product | 产品定义、POC/MVP、发布门槛和 PMF | [README](../dsh-product/README.md) |
-| dsh-business | 横跨全链路的商业策略、价值、定价和盈利 | [README](../dsh-business/README.md) |
-| dsh-sales | 变现执行：资格判断、商机推进、成交、扩单和续约（当前插件） | [README](./README.md) |
-| dsh-growth | 获客、激活、留存、收入分析和增长实验 | [README](../dsh-growth/README.md) |
-| dsh-geo | SEO/GEO/AEO、内容生产和搜索/答案引擎可发现性 | [README](../dsh-geo/README.md) |
+| dsh-idea | External opportunities, demand signals, candidate directions and smallest useful tests | [README](../dsh-idea/README.md) |
+| dsh-product | Product definition, POC/MVP, release gates and PMF | [README](../dsh-product/README.md) |
+| dsh-business | Cross-cutting commercial strategy, value, pricing and profitability | [README](../dsh-business/README.md) |
+| dsh-sales | Monetization execution: qualification, deal progression, closing, expansion and renewal (this plugin) | [README](./README.md) |
+| dsh-growth | Acquisition, activation, retention, revenue analysis and growth experiments | [README](../dsh-growth/README.md) |
+| dsh-geo | SEO/GEO/AEO, content production and search/answer-engine discoverability | [README](../dsh-geo/README.md) |
 
-## 推荐交接
+## Recommended Handoffs
 
-| 本插件产物 | 交给谁 | 交接问题 |
+| Output from this plugin | Hand off to | Handoff question |
 | --- | --- | --- |
-| 成交/丢单原因、折扣、价格异议和续约信号 | [dsh-business](../dsh-business/README.md) | 价格、套餐或渠道规则是否需要调整？ |
-| 客户需求、交付风险和未满足场景 | [dsh-product](../dsh-product/README.md) | 哪些需求影响产品价值和 PMF？ |
-| 管道、转化、销售周期和收入结果 | [dsh-growth](../dsh-growth/README.md) | 哪些来源和阶段值得投入增长资源？ |
-| 客户常问问题、异议和成功案例素材 | [dsh-geo](../dsh-geo/README.md) | 哪些内容可以降低教育成本并提升可发现性？ |
+| Close/loss reasons, discounts, pricing objections and renewal signals | [dsh-business](../dsh-business/README.md) | Should pricing, packaging or channel rules change? |
+| Customer needs, delivery risks and unmet contexts | [dsh-product](../dsh-product/README.md) | Which needs affect product value and PMF? |
+| Pipeline, conversion, sales cycle and revenue outcomes | [dsh-growth](../dsh-growth/README.md) | Which sources and stages deserve growth investment? |
+| Customer questions, objections and case-study material | [dsh-geo](../dsh-geo/README.md) | Which content can reduce sales education and closing cost? |
 
 ## Safety boundary
 
