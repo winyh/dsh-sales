@@ -61,6 +61,8 @@ flowchart TB
 
 插件之间通过交接材料和证据引用协作，不直接读取或修改其他插件的内部状态。
 
+使用 `sales_product_handoff_review` 接收并校验 `product-sales-handoff`。缺少价值证据、Proof points、商业上下文或客户下一动作时，交接会保持 `partial` / `blocked`，不会被当作成交预测或商业承诺。
+
 ## 当前版本的聚焦边界
 
 - 不做外部批量获客；线索来自用户提供的名单、访谈记录或其他插件交接；

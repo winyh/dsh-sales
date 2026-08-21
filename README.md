@@ -81,6 +81,8 @@ This plugin is the execution owner for the monetization stage: it turns qualifie
 | Pipeline, conversion, sales cycle and revenue outcomes | [dsh-growth](../dsh-growth/README.md) | Which sources and stages deserve growth investment? |
 | Customer questions, objections and case-study material | [dsh-geo](../dsh-geo/README.md) | Which content can reduce sales education and closing cost? |
 
+Use `sales_product_handoff_review` to validate a `product-sales-handoff` before qualification. Missing value evidence, proof points, commercial context or a customer next action keeps the handoff at `partial`/`blocked`; it must not be treated as a forecast or a deal commitment.
+
 ## Safety boundary
 
 This plugin produces analysis, scripts, checklists and handoffs. It does not change CRM records, contact prospects, send messages, submit quotes, approve discounts or make commercial commitments.

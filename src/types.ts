@@ -143,3 +143,40 @@ export interface GeneratedArtifact {
   markdown: string
   nextActions: string[]
 }
+
+export interface ProductSalesHandoff {
+  handoffVersion: string
+  artifactType: 'product-sales-handoff'
+  handoffFrom: 'dsh-product'
+  handoffTo: 'dsh-sales'
+  generatedAt: string
+  status: 'ready' | 'partial'
+  productDecision: 'proceed' | 'scale'
+  productName: string
+  targetBuyer: string
+  customerProblem: string
+  desiredOutcome: string
+  valueEvidence: string[]
+  proofPoints: string[]
+  requiredCapabilities: string[]
+  implementationConstraints: string[]
+  commercialContext: string[]
+  commercialQuestions: string[]
+  nextCustomerAction: string
+  owner?: string
+  source?: string
+}
+
+export interface ProductSalesHandoffReview {
+  artifactType: 'sales-handoff-review'
+  source?: string
+  productName: string
+  status: ReadinessStatus
+  decision: SalesDecision
+  missing: string[]
+  risks: string[]
+  handoff: ProductSalesHandoff
+  warnings: string[]
+  nextActions: string[]
+  markdown: string
+}

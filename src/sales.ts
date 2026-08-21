@@ -1,6 +1,6 @@
 import { findField, numberValue, valueString } from './data.js'
 import { artifactHeader, parseNote } from './markdown.js'
-import type { DealReviewResult, EvidenceStatus, ForecastResult, FunnelAnalysis, GeneratedArtifact, OfferReviewResult, ReadinessStatus, Row, SalesConfig, SalesDataset, SalesDecision, SalesNote, SalesOnboardingResult, SalesScanResult } from './types.js'
+import type { DealReviewResult, EvidenceStatus, ForecastResult, FunnelAnalysis, GeneratedArtifact, OfferReviewResult, ProductSalesHandoff, ProductSalesHandoffReview, ReadinessStatus, Row, SalesConfig, SalesDataset, SalesDecision, SalesNote, SalesOnboardingResult, SalesScanResult } from './types.js'
 
 const stageOrder = ['lead', 'qualified', 'discovery', 'solution', 'proposal', 'negotiation', 'closed-won', 'closed-lost', 'renewal', 'expansion'] as const
 const stageProbabilities: Record<string, number> = {
@@ -109,6 +109,76 @@ function factValue(value: unknown): string {
 function factSource(value: unknown): string | undefined {
   if (typeof value === 'object' && value !== null && 'source' in value) return text((value as { source?: unknown }).source) || undefined
   return undefined
+}
+
+function listField(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => text(item)).filter(Boolean)
+}
+
+export function reviewProductSalesHandoff(input: Record<string, unknown>): ProductSalesHandoffReview {
+  const handoff = input as unknown as ProductSalesHandoff
+  const missing: string[] = []
+  const risks: string[] = []
+  if (handoff.artifactType !== 'product-sales-handoff') risks.push('交接 artifactType 不是 product-sales-handoff，不能按产品销售交接处理。')
+  if (handoff.handoffFrom !== 'dsh-product' || handoff.handoffTo !== 'dsh-sales') risks.push('交接来源或目标不正确，避免把其他阶段材料直接当成销售交接。')
+  for (const [field, value] of [
+    ['handoffVersion', handoff.handoffVersion],
+    ['productDecision', handoff.productDecision],
+    ['productName', handoff.productName],
+    ['targetBuyer', handoff.targetBuyer],
+    ['customerProblem', handoff.customerProblem],
+    ['desiredOutcome', handoff.desiredOutcome],
+    ['nextCustomerAction', handoff.nextCustomerAction],
+  ] as Array<[string, unknown]>) {
+    if (!text(value)) missing.push(field)
+  }
+  if (!['proceed', 'scale'].includes(text(handoff.productDecision))) missing.push('productDecision must be proceed or scale')
+  if (listField(handoff.valueEvidence).length === 0) missing.push('valueEvidence')
+  if (listField(handoff.proofPoints).length === 0) missing.push('proofPoints')
+  if (listField(handoff.commercialContext).length === 0) missing.push('commercialContext from dsh-business or user')
+  if (!text(handoff.source)) risks.push('没有来源路径；销售团队无法回到产品决策或 PMF 证据。')
+  if (listField(handoff.commercialQuestions).length > 0) risks.push(`仍有 ${listField(handoff.commercialQuestions).length} 个商业问题待确认，不能直接承诺价格或折扣。`)
+  const status: ReadinessStatus = risks.some((risk) => risk.includes('不是 product-sales-handoff') || risk.includes('来源或目标不正确'))
+    ? 'blocked'
+    : missing.length === 0 && risks.length === 0
+      ? 'ready'
+      : missing.length <= 3
+        ? 'partial'
+        : 'blocked'
+  const decision: SalesDecision = status === 'ready' ? 'advance' : status === 'partial' ? 'validate' : 'hold'
+  const nextActions = status === 'ready'
+    ? ['运行 sales_deal_review，补齐客户 Problem、Impact、Buyer、Process、Timing、Competition 和 Commitment。', '确认 dsh-business 的价格底线、成本基础、付款和折扣授权后再进入报价审查。']
+    : ['先补齐销售交接缺失字段和商业问题，再运行 sales_deal_review；不要用缺失字段推断成交概率。']
+  const normalized: ProductSalesHandoff = {
+    ...handoff,
+    valueEvidence: listField(handoff.valueEvidence),
+    proofPoints: listField(handoff.proofPoints),
+    requiredCapabilities: listField(handoff.requiredCapabilities),
+    implementationConstraints: listField(handoff.implementationConstraints),
+    commercialContext: listField(handoff.commercialContext),
+    commercialQuestions: listField(handoff.commercialQuestions),
+  }
+  const productName = text(handoff.productName) || '未命名产品'
+  const markdown = [
+    artifactHeader('sales-handoff-review', `${productName} 产品销售交接审查`, status, { source: text(handoff.source) }),
+    '## 交接判断',
+    '',
+    `- 决定：${decision}`,
+    `- 准备度：${status}`,
+    `- 产品决策：${text(handoff.productDecision) || '缺失'}`,
+    '',
+    '## 缺失字段',
+    ...(missing.length > 0 ? missing.map((item) => `- ${item}`) : ['- 无']),
+    '',
+    '## 风险',
+    ...(risks.length > 0 ? risks.map((item) => `- ${item}`) : ['- 未发现阻塞风险']),
+    '',
+    '## 下一步',
+    ...nextActions.map((item) => `- ${item}`),
+    '',
+  ].join('\n')
+  return { artifactType: 'sales-handoff-review', source: text(handoff.source) || undefined, productName, status, decision, missing, risks, handoff: normalized, warnings: [], nextActions, markdown }
 }
 
 function reviewMarkdown(result: Omit<DealReviewResult, 'markdown'>): string {

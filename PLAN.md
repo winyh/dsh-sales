@@ -9,6 +9,7 @@
 - Weighted pipeline forecast with visible probability assumptions and close-date caveats.
 - Sales playbook and deal-review artifact generation with preview-before-write.
 - Handoff references for `dsh-idea`, `dsh-product`, `dsh-business` and `dsh-growth`, without duplicating their core tools.
+- Consume and validate the versioned product-to-sales handoff before qualification or commercial progression.
 
 ## Deliberate boundaries
 
@@ -26,5 +27,5 @@
 
 1. Add adapters for user-approved CRM exports while preserving field lineage and redaction.
 2. Add win/loss and stage-aging cohort analysis across segments, owners and sources.
-3. Add product-to-sales readiness handoff consumption from `dsh-product`.
+3. Add win/loss feedback fields that can be handed back to `dsh-product` and `dsh-idea` without importing CRM state.
 4. Add commercial approval matrices that can be reviewed by `dsh-business`.
