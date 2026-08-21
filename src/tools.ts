@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readSalesDataset } from './data.js'
 import { jsonValue, renderResult, resultEnvelope, resultSchema, type ResultLineage } from './output.js'
-import { analyzeSalesFunnel, buildSalesOnboarding, forecastPipeline, generatePlaybook, reviewDeal, reviewOffer, reviewProductSalesHandoff } from './sales.js'
+import { analyzeSalesFunnel, buildSalesOnboarding, forecastPipeline, generatePlaybook, reviewCommercialHandoff, reviewDeal, reviewOffer, reviewProductSalesHandoff } from './sales.js'
 import { replacementDiff } from './markdown.js'
 import type { FileSystemLike, SalesConfig } from './types.js'
 import { auditNoteForTool, readSalesNote, scanSalesVault } from './vault.js'
@@ -91,6 +91,21 @@ export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSy
       const result = analyzeSalesFunnel(dataset, args)
       ctx.emit('sales/analysis-completed', { kind: 'funnel', source: args.path, warningCount: result.warnings.length })
       return wrapResult(result, { lineage: [{ source: args.path, fields: [result.stageField, ...(result.amountField ? [result.amountField] : []), ...(result.dateField ? [result.dateField] : [])] }], nextActions: result.nextActions })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sales_commercial_handoff_review',
+    description: 'Consume and validate a dsh-business commercial-handoff before sales quoting or negotiation. It checks explicit price floors, cost/contribution facts, risk status and approval requirements; it never grants authority.',
+    parameters: {
+      handoffJson: { type: 'string', required: true, description: 'JSON returned by business_commercial_handoff, including its result envelope or data object.' },
+    },
+    output: salesOutput(config.maxResultChars),
+    async execute(args) {
+      const parsed = parseObject(args.handoffJson, 'handoffJson')
+      const data = typeof parsed.data === 'object' && parsed.data !== null && !Array.isArray(parsed.data) ? parsed.data as Record<string, unknown> : parsed
+      const review = reviewCommercialHandoff(data)
+      return wrapResult(review, { lineage: review.source ? [{ source: review.source }] : [], nextActions: review.nextActions })
     },
   }))
 

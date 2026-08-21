@@ -10,6 +10,7 @@
 - Sales playbook and deal-review artifact generation with preview-before-write.
 - Handoff references for `dsh-idea`, `dsh-product`, `dsh-business` and `dsh-growth`, without duplicating their core tools.
 - Consume and validate the versioned product-to-sales handoff before qualification or commercial progression.
+- Consume and validate the versioned commercial-handoff from `dsh-business` before quoting or negotiation.
 
 ## Deliberate boundaries
 

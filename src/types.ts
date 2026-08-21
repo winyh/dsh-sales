@@ -180,3 +180,42 @@ export interface ProductSalesHandoffReview {
   nextActions: string[]
   markdown: string
 }
+
+export interface BusinessCommercialHandoff {
+  handoffVersion: string
+  artifactType: 'commercial-handoff'
+  handoffFrom: 'dsh-business'
+  handoffTo: 'dsh-sales' | 'dsh-product'
+  generatedAt: string
+  status: 'ready-for-review' | 'partial' | 'blocked'
+  decision: 'review' | 'hold'
+  productName: string
+  currency: string
+  offers: Array<{
+    sku: string
+    channel: string
+    effectivePrice: number
+    minimumTransactionPrice?: number
+    unitCost: number
+    contributionPerUnit: number
+    contributionMarginPct: number
+    status: 'healthy' | 'warning' | 'blocked'
+  }>
+  risks: string[]
+  requiredApprovals: string[]
+  source?: string
+}
+
+export interface CommercialHandoffReview {
+  artifactType: 'commercial-handoff-review'
+  source?: string
+  productName: string
+  status: ReadinessStatus
+  decision: SalesDecision
+  missing: string[]
+  risks: string[]
+  handoff: BusinessCommercialHandoff
+  warnings: string[]
+  nextActions: string[]
+  markdown: string
+}

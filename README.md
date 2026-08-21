@@ -83,6 +83,8 @@ This plugin is the execution owner for the monetization stage: it turns qualifie
 
 Use `sales_product_handoff_review` to validate a `product-sales-handoff` before qualification. Missing value evidence, proof points, commercial context or a customer next action keeps the handoff at `partial`/`blocked`; it must not be treated as a forecast or a deal commitment.
 
+Use `sales_commercial_handoff_review` to validate a `dsh-business` `commercial-handoff` before quoting or negotiation. A calculated effective price is not an approved floor, and any exception must return to an authorized approval process.
+
 ## Safety boundary
 
 This plugin produces analysis, scripts, checklists and handoffs. It does not change CRM records, contact prospects, send messages, submit quotes, approve discounts or make commercial commitments.

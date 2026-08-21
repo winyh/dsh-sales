@@ -63,6 +63,8 @@ flowchart TB
 
 使用 `sales_product_handoff_review` 接收并校验 `product-sales-handoff`。缺少价值证据、Proof points、商业上下文或客户下一动作时，交接会保持 `partial` / `blocked`，不会被当作成交预测或商业承诺。
 
+使用 `sales_commercial_handoff_review` 在报价或谈判前校验 `dsh-business` 的 `commercial-handoff`。计算出的有效成交价不等于已批准底价，任何例外都必须回到有权限的审批流程。
+
 ## 当前版本的聚焦边界
 
 - 不做外部批量获客；线索来自用户提供的名单、访谈记录或其他插件交接；
@@ -79,6 +81,7 @@ flowchart TB
 - `sales_funnel_analyze`：分析商机阶段、转化、流失和阶段定义；
 - `sales_deal_review`：对单个机会做资格判断、风险识别和下一步规划；
 - `sales_offer_review`：检查价值主张、报价证据、价格边界和商业风险；
+- `sales_product_handoff_review` / `sales_commercial_handoff_review`：校验产品交接和商业交接是否达到销售推进前的最低条件；
 - `sales_forecast`：基于管道金额、阶段概率和预计成交日生成加权预测；
 - `sales_playbook_generate`：生成销售 playbook、客户推进计划或成交复盘；
 - `sales_apply_artifact`：预览后安全写入本地 Markdown。

@@ -1,6 +1,6 @@
 import { findField, numberValue, valueString } from './data.js'
 import { artifactHeader, parseNote } from './markdown.js'
-import type { DealReviewResult, EvidenceStatus, ForecastResult, FunnelAnalysis, GeneratedArtifact, OfferReviewResult, ProductSalesHandoff, ProductSalesHandoffReview, ReadinessStatus, Row, SalesConfig, SalesDataset, SalesDecision, SalesNote, SalesOnboardingResult, SalesScanResult } from './types.js'
+import type { BusinessCommercialHandoff, CommercialHandoffReview, DealReviewResult, EvidenceStatus, ForecastResult, FunnelAnalysis, GeneratedArtifact, OfferReviewResult, ProductSalesHandoff, ProductSalesHandoffReview, ReadinessStatus, Row, SalesConfig, SalesDataset, SalesDecision, SalesNote, SalesOnboardingResult, SalesScanResult } from './types.js'
 
 const stageOrder = ['lead', 'qualified', 'discovery', 'solution', 'proposal', 'negotiation', 'closed-won', 'closed-lost', 'renewal', 'expansion'] as const
 const stageProbabilities: Record<string, number> = {
@@ -179,6 +179,69 @@ export function reviewProductSalesHandoff(input: Record<string, unknown>): Produ
     '',
   ].join('\n')
   return { artifactType: 'sales-handoff-review', source: text(handoff.source) || undefined, productName, status, decision, missing, risks, handoff: normalized, warnings: [], nextActions, markdown }
+}
+
+export function reviewCommercialHandoff(input: Record<string, unknown>): CommercialHandoffReview {
+  const handoff = input as unknown as BusinessCommercialHandoff
+  const missing: string[] = []
+  const risks = [...(Array.isArray(handoff.risks) ? handoff.risks.map((item) => text(item)).filter(Boolean) : [])]
+  if (handoff.artifactType !== 'commercial-handoff') risks.push('交接 artifactType 不是 commercial-handoff。')
+  if (handoff.handoffFrom !== 'dsh-business' || handoff.handoffTo !== 'dsh-sales') risks.push('商业交接来源或目标不正确。')
+  for (const [field, value] of [['handoffVersion', handoff.handoffVersion], ['productName', handoff.productName], ['currency', handoff.currency], ['decision', handoff.decision]] as Array<[string, unknown]>) {
+    if (!text(value)) missing.push(field)
+  }
+  if (handoff.decision !== 'review') missing.push('decision must be review')
+  if (!Array.isArray(handoff.offers) || handoff.offers.length === 0) missing.push('offers')
+  if (!Array.isArray(handoff.requiredApprovals) || handoff.requiredApprovals.length === 0) missing.push('requiredApprovals')
+  const offers = Array.isArray(handoff.offers) ? handoff.offers : []
+  for (const offer of offers) {
+    if (typeof offer !== 'object' || offer === null) {
+      risks.push('存在无法解析的报价行。')
+      continue
+    }
+    const row = offer as BusinessCommercialHandoff['offers'][number]
+    if (row.minimumTransactionPrice === undefined) missing.push(`minimumTransactionPrice: ${text(row.sku)}/${text(row.channel)}`)
+    if (typeof row.contributionPerUnit === 'number' && row.contributionPerUnit < 0) risks.push(`${text(row.sku)}/${text(row.channel)} 单位贡献为负，不能进入正常报价。`)
+    if (row.status === 'blocked') risks.push(`${text(row.sku)}/${text(row.channel)} 报价状态为 blocked。`)
+  }
+  if (!text(handoff.source)) risks.push('没有商业分析来源；无法回到价格或成本计算。')
+  const status: ReadinessStatus = risks.some((risk) => risk.includes('不是 commercial-handoff') || risk.includes('来源或目标不正确') || risk.includes('单位贡献为负') || risk.includes('状态为 blocked'))
+    ? 'blocked'
+    : missing.length === 0
+      ? 'ready'
+      : missing.length <= 2
+        ? 'partial'
+        : 'blocked'
+  const decision: SalesDecision = status === 'ready' ? 'advance' : status === 'partial' ? 'validate' : 'hold'
+  const nextActions = status === 'ready'
+    ? ['由授权负责人确认商业交接，再运行 sales_offer_review 审查客户价值、付款和折扣条件。', '任何例外价格或折扣都要回到 dsh-business 或授权审批流程。']
+    : ['先补齐明确最低成交价、报价来源、审批人和风险处置，不要把有效成交价当成授权底线。']
+  const normalized: BusinessCommercialHandoff = {
+    ...handoff,
+    offers: offers.filter((offer): offer is BusinessCommercialHandoff['offers'][number] => typeof offer === 'object' && offer !== null),
+    risks,
+    requiredApprovals: Array.isArray(handoff.requiredApprovals) ? handoff.requiredApprovals.map((item) => text(item)).filter(Boolean) : [],
+  }
+  const productName = text(handoff.productName) || '未命名产品'
+  const markdown = [
+    artifactHeader('commercial-handoff-review', `${productName} 商业交接审查`, status, { source: text(handoff.source) }),
+    '## 交接判断',
+    '',
+    `- 决定：${decision}`,
+    `- 准备度：${status}`,
+    `- 商业决定：${text(handoff.decision) || '缺失'}`,
+    '',
+    '## 缺失字段',
+    ...(missing.length > 0 ? missing.map((item) => `- ${item}`) : ['- 无']),
+    '',
+    '## 风险',
+    ...(risks.length > 0 ? risks.map((item) => `- ${item}`) : ['- 未发现阻塞风险']),
+    '',
+    '## 下一步',
+    ...nextActions.map((item) => `- ${item}`),
+    '',
+  ].join('\n')
+  return { artifactType: 'commercial-handoff-review', source: text(handoff.source) || undefined, productName, status, decision, missing, risks, handoff: normalized, warnings: [], nextActions, markdown }
 }
 
 function reviewMarkdown(result: Omit<DealReviewResult, 'markdown'>): string {
