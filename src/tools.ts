@@ -6,6 +6,7 @@ import { analyzeSalesFunnel, analyzeStageAging, buildSalesFeedbackHandoff, build
 import { replacementDiff } from './markdown.js'
 import type { FileSystemLike, SalesConfig } from './types.js'
 import { auditNoteForTool, readSalesNote, scanSalesVault } from './vault.js'
+import { appendArtifactAudit, attachArtifactMetadata, contentHash, reviewArtifact } from './artifacts.js'
 
 function salesOutput(maxChars: number) {
   return { schema: resultSchema, render: (_args: unknown, value: unknown) => renderResult(value, maxChars) }
@@ -15,7 +16,7 @@ function wrapResult(value: unknown, options: { lineage?: ResultLineage[]; assump
   const warnings = typeof value === 'object' && value !== null && 'warnings' in value && Array.isArray(value.warnings)
     ? value.warnings.filter((warning): warning is string => typeof warning === 'string')
     : []
-  return resultEnvelope({ data: jsonValue(value), warnings, assumptions: options.assumptions, lineage: options.lineage, nextActions: options.nextActions })
+  return resultEnvelope({ data: jsonValue(attachArtifactMetadata(value, { staleAfterDays: 30 })), warnings, assumptions: options.assumptions, lineage: options.lineage, nextActions: options.nextActions })
 }
 
 function parseList(value: string | undefined, label: string): string[] {
@@ -271,6 +272,23 @@ export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSy
   }))
 
   ctx.tools.register(defineTool({
+    name: 'sales_artifact_review',
+    description: 'Validate a sales artifact before using it for qualification, pricing or feedback handoff. Checks schema, stable ID and freshness.',
+    parameters: {
+      artifactJson: { type: 'string', required: true, description: 'JSON returned by a plugin tool.' },
+      expectedType: { type: 'string', description: 'Optional expected artifactType.' },
+    },
+    output: salesOutput(config.maxResultChars),
+    async execute(args) {
+      let value: unknown
+      try { value = JSON.parse(args.artifactJson) as unknown } catch (error) { throw new Error(`artifactJson must be valid JSON: ${error instanceof Error ? error.message : String(error)}`) }
+      const data = typeof value === 'object' && value !== null && 'data' in value ? (value as { data: unknown }).data : value
+      const review = reviewArtifact(data, args.expectedType?.trim() || undefined)
+      return wrapResult({ artifactType: 'sales-artifact-review', generatedAt: new Date().toISOString(), ...review }, { nextActions: review.nextActions })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'sales_apply_artifact',
     description: 'Preview or apply a complete Markdown sales artifact under defaultRoot using a stale-version guard. Set confirm=true only after explicit approval.',
     parameters: {
@@ -292,7 +310,9 @@ export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSy
       }
       await fs.writeText(target, args.content, { kind: 'replaceIfVersion', version: info.version }, exec.signal)
       ctx.emit('sales/report-applied', { path: args.path })
-      return wrapResult({ status: 'applied', path: args.path, changed: args.content !== current, applied: true, guarded: true }, { lineage: [{ source: args.path }] })
+      let audit: unknown
+      try { audit = await appendArtifactAudit(fs, config.defaultRoot, { action: 'apply', path: args.path, beforeHash: contentHash(current), afterHash: contentHash(args.content), approved: true }, exec.signal) } catch (error) { audit = { status: 'audit-failed', warning: error instanceof Error ? error.message : String(error) } }
+      return wrapResult({ status: 'applied', path: args.path, changed: args.content !== current, applied: true, guarded: true, audit }, { lineage: [{ source: args.path }] })
     },
   }))
 }

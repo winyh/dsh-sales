@@ -6,6 +6,8 @@
 
 六插件公开协作契约：[SUITE.md](https://github.com/winyh/dsh-business/blob/main/SUITE.md)。
 
+`sales_artifact_review` 在资格判断、报价和反馈回流前校验销售工件；销售插件仍不会直接写 CRM 或联系客户。
+
 完整的阶段作战卡见 [`docs/销售作战手册.md`](docs/销售作战手册.md)。本插件不追求覆盖所有销售理论，默认只服务于 B2B / 高客单价、需要人工推进的销售机会。
 
 ## 方法主线

@@ -1,6 +1,7 @@
 import { findField, numberValue, valueString } from './data.js'
 import { artifactHeader, parseNote } from './markdown.js'
 import type { BusinessCommercialHandoff, CommercialHandoffReview, CrmImportResult, DealReviewResult, EvidenceStatus, ForecastResult, FunnelAnalysis, GeneratedArtifact, OfferReviewResult, Primitive, ProductSalesHandoff, ProductSalesHandoffReview, ReadinessStatus, Row, SalesConfig, SalesDataset, SalesDecision, SalesFeedbackHandoff, SalesNote, SalesOnboardingResult, SalesScanResult, SalesStageAgingResult, SalesWinLossResult } from './types.js'
+import { createArtifactId } from './artifacts.js'
 
 const stageOrder = ['lead', 'qualified', 'discovery', 'solution', 'proposal', 'negotiation', 'closed-won', 'closed-lost', 'renewal', 'expansion'] as const
 const stageProbabilities: Record<string, number> = {
@@ -510,10 +511,6 @@ export function reviewWinLoss(dataset: SalesDataset, options: { outcomeField?: s
   return { artifactType: 'sales-win-loss-review', generatedAt: new Date().toISOString(), source: dataset.source, outcomeField, ...(amountField ? { amountField } : {}), ...(segmentField ? { segmentField } : {}), summary: { won, lost, winRate: won + lost > 0 ? Math.round((won / (won + lost)) * 1000) / 10 : null, wonAmount, lostAmount }, segments, feedback, warnings: [...dataset.warnings, ...(won + lost < dataset.rows.length ? ['部分记录没有可识别的赢输结果，未纳入胜率。'] : [])], nextActions: feedback.length > 0 ? ['将高频失单原因分别交给 dsh-product 或 dsh-idea，形成产品变更或新发现。'] : ['补充失单原因字段，再分析可行动的反馈回流。'] }
 }
 
-function artifactSlug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'unknown'
-}
-
 export function buildSalesFeedbackHandoff(input: {
   dataset: SalesDataset
   target: 'dsh-product' | 'dsh-idea' | 'dsh-growth'
@@ -521,7 +518,7 @@ export function buildSalesFeedbackHandoff(input: {
 }): SalesFeedbackHandoff {
   const review = reviewWinLoss(input.dataset, input.options)
   const generatedAt = new Date().toISOString()
-  const artifactId = `dsh-sales-feedback-${input.target}-${artifactSlug(input.dataset.source)}-${generatedAt.slice(0, 10)}`
+  const artifactId = createArtifactId({ artifactType: 'sales-feedback-handoff', target: input.target, source: input.dataset.source, summary: review.summary, segments: review.segments, feedback: review.feedback })
   const feedback = input.target === 'dsh-growth'
     ? review.feedback
     : review.feedback.filter((item) => item.target === input.target)

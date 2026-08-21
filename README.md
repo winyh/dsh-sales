@@ -8,6 +8,12 @@ English | [中文](./README.zh.md)
 
 Public six-plugin collaboration contract: [SUITE.md](https://github.com/winyh/dsh-business/blob/main/SUITE.md).
 
+## 协作可靠
+
+`sales_artifact_review` 在资格判断、报价和反馈回流前校验销售工件的版本、稳定 ID、内容指纹和有效期；销售插件仍不会直接写 CRM 或联系客户。
+
+`sales_artifact_review` validates sales artifacts before qualification, quoting or feedback handoff; the plugin still does not write to CRM or contact customers directly.
+
 It turns local Markdown, CSV, JSON and JSONL sales material into explainable sales readiness checks, pipeline analysis, deal qualification, offer reviews, weighted forecasts and previewable sales artifacts.
 
 ## Scope

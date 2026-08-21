@@ -16,7 +16,7 @@ describe('cross-plugin contract smoke chain', () => {
   it('returns a versioned sales feedback artifact for the idea loop', () => {
     const handoff = buildSalesFeedbackHandoff({ dataset, target: 'dsh-idea', options: { outcomeField: 'outcome', amountField: 'amount', segmentField: 'segment', reasonField: 'reason' } })
     expect(handoff.schemaVersion).toBe('1.0')
-    expect(handoff.artifactId).toContain('dsh-sales-feedback-dsh-idea')
+    expect(handoff.artifactId).toMatch(/^dsh-sales-sales-feedback-handoff-[a-f0-9]{12}$/)
     expect(handoff.handoffFrom).toBe('dsh-sales')
     expect(handoff.handoffTo).toBe('dsh-idea')
     expect(handoff.feedback[0]?.reason).toBe('市场需求不明确')
