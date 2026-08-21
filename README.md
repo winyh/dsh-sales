@@ -6,6 +6,8 @@ English | [中文](./README.zh.md)
 
 `dsh-sales` is a DeepSeek Harness plugin for the commercial operating layer between qualified demand and repeatable revenue.
 
+Public six-plugin collaboration contract: [SUITE.md](https://github.com/winyh/dsh-business/blob/main/SUITE.md).
+
 It turns local Markdown, CSV, JSON and JSONL sales material into explainable sales readiness checks, pipeline analysis, deal qualification, offer reviews, weighted forecasts and previewable sales artifacts.
 
 ## Scope

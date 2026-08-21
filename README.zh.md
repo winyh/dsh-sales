@@ -4,6 +4,8 @@
 
 `dsh-sales` 是一个 DeepSeek Harness 插件，负责把已经确认的客户机会推进到可成交、可复盘、可预测和可扩张的销售运营层。
 
+六插件公开协作契约：[SUITE.md](https://github.com/winyh/dsh-business/blob/main/SUITE.md)。
+
 完整的阶段作战卡见 [`docs/销售作战手册.md`](docs/销售作战手册.md)。本插件不追求覆盖所有销售理论，默认只服务于 B2B / 高客单价、需要人工推进的销售机会。
 
 ## 方法主线

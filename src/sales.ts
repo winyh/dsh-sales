@@ -1,6 +1,6 @@
 import { findField, numberValue, valueString } from './data.js'
 import { artifactHeader, parseNote } from './markdown.js'
-import type { BusinessCommercialHandoff, CommercialHandoffReview, DealReviewResult, EvidenceStatus, ForecastResult, FunnelAnalysis, GeneratedArtifact, OfferReviewResult, ProductSalesHandoff, ProductSalesHandoffReview, ReadinessStatus, Row, SalesConfig, SalesDataset, SalesDecision, SalesNote, SalesOnboardingResult, SalesScanResult } from './types.js'
+import type { BusinessCommercialHandoff, CommercialHandoffReview, CrmImportResult, DealReviewResult, EvidenceStatus, ForecastResult, FunnelAnalysis, GeneratedArtifact, OfferReviewResult, Primitive, ProductSalesHandoff, ProductSalesHandoffReview, ReadinessStatus, Row, SalesConfig, SalesDataset, SalesDecision, SalesFeedbackHandoff, SalesNote, SalesOnboardingResult, SalesScanResult, SalesStageAgingResult, SalesWinLossResult } from './types.js'
 
 const stageOrder = ['lead', 'qualified', 'discovery', 'solution', 'proposal', 'negotiation', 'closed-won', 'closed-lost', 'renewal', 'expansion'] as const
 const stageProbabilities: Record<string, number> = {
@@ -122,6 +122,8 @@ export function reviewProductSalesHandoff(input: Record<string, unknown>): Produ
   const risks: string[] = []
   if (handoff.artifactType !== 'product-sales-handoff') risks.push('交接 artifactType 不是 product-sales-handoff，不能按产品销售交接处理。')
   if (handoff.handoffFrom !== 'dsh-product' || handoff.handoffTo !== 'dsh-sales') risks.push('交接来源或目标不正确，避免把其他阶段材料直接当成销售交接。')
+  if (handoff.schemaVersion !== '1.0') missing.push('schemaVersion must be 1.0')
+  if (!text(handoff.artifactId)) missing.push('artifactId')
   for (const [field, value] of [
     ['handoffVersion', handoff.handoffVersion],
     ['productDecision', handoff.productDecision],
@@ -187,6 +189,8 @@ export function reviewCommercialHandoff(input: Record<string, unknown>): Commerc
   const risks = [...(Array.isArray(handoff.risks) ? handoff.risks.map((item) => text(item)).filter(Boolean) : [])]
   if (handoff.artifactType !== 'commercial-handoff') risks.push('交接 artifactType 不是 commercial-handoff。')
   if (handoff.handoffFrom !== 'dsh-business' || handoff.handoffTo !== 'dsh-sales') risks.push('商业交接来源或目标不正确。')
+  if (handoff.schemaVersion !== '1.0') missing.push('schemaVersion must be 1.0')
+  if (!text(handoff.artifactId)) missing.push('artifactId')
   for (const [field, value] of [['handoffVersion', handoff.handoffVersion], ['productName', handoff.productName], ['currency', handoff.currency], ['decision', handoff.decision]] as Array<[string, unknown]>) {
     if (!text(value)) missing.push(field)
   }
@@ -400,4 +404,173 @@ export function parseSalesNote(path: string, content: string): SalesNote {
 
 export function defaultConfigSummary(config: SalesConfig): string {
   return `${config.defaultCurrency}/${config.defaultTimezone}`
+}
+
+function field(columns: string[], preferred: string | undefined, candidates: string[]): string | undefined {
+  return findField(columns, preferred, candidates)
+}
+
+function daysBetween(start: string, end: string): number | undefined {
+  const from = Date.parse(start)
+  const to = Date.parse(end)
+  if (Number.isNaN(from) || Number.isNaN(to)) return undefined
+  return Math.max(0, Math.floor((to - from) / 86_400_000))
+}
+
+export function normalizeCrmExport(dataset: SalesDataset, mapping: Record<string, string> = {}): CrmImportResult {
+  const aliases: Record<string, string[]> = {
+    dealId: ['deal_id', 'opportunity_id', 'id', '商机编号'],
+    stage: ['stage', 'status', '阶段', '商机阶段'],
+    amount: ['amount', 'value', 'deal_value', '金额', '合同金额'],
+    closeDate: ['close_date', 'expected_close', '成交日期', '预计成交日'],
+    owner: ['owner', 'sales_rep', '销售负责人', '负责人'],
+    outcome: ['outcome', 'result', 'win_loss', '结果', '输赢'],
+    segment: ['segment', 'industry', 'customer_type', '客户分群', '行业'],
+    source: ['source', 'lead_source', '来源', '渠道'],
+  }
+  const fieldMap: Record<string, string> = {}
+  for (const [key, candidates] of Object.entries(aliases)) {
+    const selected = mapping[key] ?? findField(dataset.columns, undefined, candidates)
+    if (selected) fieldMap[key] = selected
+  }
+  const records = dataset.rows.map((row) => {
+    const normalized: Record<string, Primitive | undefined> = { ...row }
+    for (const [key, source] of Object.entries(fieldMap)) normalized[key] = row[source]
+    return normalized
+  })
+  const warnings = [...dataset.warnings]
+  for (const key of ['dealId', 'stage', 'amount']) if (!fieldMap[key]) warnings.push(`未识别 CRM 字段：${key}`)
+  return {
+    artifactType: 'sales-crm-import',
+    generatedAt: new Date().toISOString(),
+    source: dataset.source,
+    rowsRead: dataset.rows.length,
+    rowsAccepted: records.length,
+    fieldMap,
+    records,
+    warnings,
+    nextActions: warnings.length > 0 ? ['确认字段映射后再运行销售管道、阶段老化或 Win/Loss 分析。'] : ['保留原始来源和字段映射，再运行 sales_funnel_analyze 或 sales_win_loss_review。'],
+  }
+}
+
+export function analyzeStageAging(dataset: SalesDataset, options: { stageField?: string; dateField?: string; asOf?: string } = {}): SalesStageAgingResult {
+  const stageField = field(dataset.columns, options.stageField, ['stage', 'status', 'opportunity_stage', '阶段', '商机阶段', '状态'])
+  const dateField = field(dataset.columns, options.dateField, ['created_at', 'created_date', 'stage_date', 'date', '创建日期', '阶段日期'])
+  if (!stageField) throw new Error('Could not identify a stage field; provide stageField explicitly')
+  if (!dateField) throw new Error('Could not identify a date field; provide dateField explicitly')
+  const asOf = options.asOf ?? new Date().toISOString().slice(0, 10)
+  const grouped = new Map<string, { ages: number[]; missingDate: number }>()
+  for (const row of dataset.rows) {
+    const stage = normalizeStage(row[stageField])
+    const current = grouped.get(stage) ?? { ages: [], missingDate: 0 }
+    const age = daysBetween(valueString(row[dateField]), asOf)
+    if (age === undefined) current.missingDate += 1
+    else current.ages.push(age)
+    grouped.set(stage, current)
+  }
+  const stages = [...grouped.entries()].map(([stage, value]) => ({
+    stage,
+    records: value.ages.length + value.missingDate,
+    averageAgeDays: value.ages.length > 0 ? Math.round(value.ages.reduce((sum, age) => sum + age, 0) / value.ages.length) : null,
+    oldestAgeDays: value.ages.length > 0 ? Math.max(...value.ages) : null,
+    missingDate: value.missingDate,
+  }))
+  const warnings = [...dataset.warnings]
+  if (stages.some((stage) => stage.missingDate > 0)) warnings.push('部分记录缺少可解析日期，老化天数不能代表全部商机。')
+  return { artifactType: 'sales-stage-aging', generatedAt: new Date().toISOString(), source: dataset.source, asOf, stageField, dateField, stages, warnings, nextActions: ['优先检查平均或最老停留时间最高的阶段，并结合客户下一步动作复核。'] }
+}
+
+export function reviewWinLoss(dataset: SalesDataset, options: { outcomeField?: string; amountField?: string; segmentField?: string; reasonField?: string } = {}): SalesWinLossResult {
+  const outcomeField = field(dataset.columns, options.outcomeField, ['outcome', 'result', 'win_loss', 'status', '结果', '输赢'])
+  const amountField = field(dataset.columns, options.amountField, ['amount', 'value', 'deal_value', '金额', '合同金额'])
+  const segmentField = field(dataset.columns, options.segmentField, ['segment', 'industry', 'customer_type', '客户分群', '行业'])
+  const reasonField = field(dataset.columns, options.reasonField, ['loss_reason', 'reason', 'unmet_need', '失单原因', '原因', '未满足需求'])
+  if (!outcomeField) throw new Error('Could not identify an outcome field; provide outcomeField explicitly')
+  const groups = new Map<string, { won: number; lost: number; wonAmount: number; lostAmount: number }>()
+  const reasons = new Map<string, number>()
+  let won = 0; let lost = 0; let wonAmount = 0; let lostAmount = 0
+  for (const row of dataset.rows) {
+    const outcome = valueString(row[outcomeField]).toLowerCase()
+    const isWon = ['won', 'closed-won', 'win', '赢单', '成交', '成功'].includes(outcome)
+    const isLost = ['lost', 'closed-lost', 'loss', '输单', '失单', '失败'].includes(outcome)
+    if (!isWon && !isLost) continue
+    const amount = numberValue(amountField ? row[amountField] : undefined) ?? 0
+    const segment = segmentField ? valueString(row[segmentField]) || '未分群' : '全部'
+    const current = groups.get(segment) ?? { won: 0, lost: 0, wonAmount: 0, lostAmount: 0 }
+    if (isWon) { won += 1; wonAmount += amount; current.won += 1; current.wonAmount += amount }
+    if (isLost) {
+      lost += 1; lostAmount += amount; current.lost += 1; current.lostAmount += amount
+      const reason = reasonField ? valueString(row[reasonField]) : ''
+      if (reason) reasons.set(reason, (reasons.get(reason) ?? 0) + 1)
+    }
+    groups.set(segment, current)
+  }
+  const segments = [...groups.entries()].map(([segment, value]) => ({ segment, ...value, winRate: value.won + value.lost > 0 ? Math.round((value.won / (value.won + value.lost)) * 1000) / 10 : null }))
+  const feedback = [...reasons.entries()].map(([reason, count]) => ({ target: /功能|产品|缺少|集成|体验/i.test(reason) ? 'dsh-product' as const : 'dsh-idea' as const, reason, count })).sort((a, b) => b.count - a.count)
+  return { artifactType: 'sales-win-loss-review', generatedAt: new Date().toISOString(), source: dataset.source, outcomeField, ...(amountField ? { amountField } : {}), ...(segmentField ? { segmentField } : {}), summary: { won, lost, winRate: won + lost > 0 ? Math.round((won / (won + lost)) * 1000) / 10 : null, wonAmount, lostAmount }, segments, feedback, warnings: [...dataset.warnings, ...(won + lost < dataset.rows.length ? ['部分记录没有可识别的赢输结果，未纳入胜率。'] : [])], nextActions: feedback.length > 0 ? ['将高频失单原因分别交给 dsh-product 或 dsh-idea，形成产品变更或新发现。'] : ['补充失单原因字段，再分析可行动的反馈回流。'] }
+}
+
+function artifactSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'unknown'
+}
+
+export function buildSalesFeedbackHandoff(input: {
+  dataset: SalesDataset
+  target: 'dsh-product' | 'dsh-idea' | 'dsh-growth'
+  options?: { outcomeField?: string; amountField?: string; segmentField?: string; reasonField?: string }
+}): SalesFeedbackHandoff {
+  const review = reviewWinLoss(input.dataset, input.options)
+  const generatedAt = new Date().toISOString()
+  const artifactId = `dsh-sales-feedback-${input.target}-${artifactSlug(input.dataset.source)}-${generatedAt.slice(0, 10)}`
+  const feedback = input.target === 'dsh-growth'
+    ? review.feedback
+    : review.feedback.filter((item) => item.target === input.target)
+  const warnings = [...review.warnings]
+  if (feedback.length === 0) warnings.push(`没有明确归属 ${input.target} 的输赢反馈；请补充失单原因或人工分类。`)
+  const nextActions = input.target === 'dsh-product'
+    ? ['由 dsh-product 评估是否形成产品变更影响审查，不把单一失单原因当作普遍需求。']
+    : input.target === 'dsh-idea'
+      ? ['由 dsh-idea 将重复且有证据的市场问题转成新发现，再安排最小验证实验。']
+      : ['由 dsh-growth 将成交与失单结果映射到收入、转化和回收期指标，保留原始来源。']
+  const handoff: SalesFeedbackHandoff = {
+    schemaVersion: '1.0',
+    artifactId,
+    artifactType: 'sales-feedback-handoff',
+    handoffFrom: 'dsh-sales',
+    handoffTo: input.target,
+    generatedAt,
+    source: input.dataset.source,
+    target: input.target,
+    summary: review.summary,
+    segments: review.segments,
+    feedback,
+    warnings,
+    nextActions,
+    markdown: '',
+  }
+  handoff.markdown = [
+    '---',
+    'schemaVersion: "1.0"',
+    `artifactId: ${JSON.stringify(artifactId)}`,
+    'artifactType: sales-feedback-handoff',
+    'handoffFrom: dsh-sales',
+    `handoffTo: ${input.target}`,
+    `generatedAt: ${generatedAt}`,
+    `source: ${JSON.stringify(input.dataset.source)}`,
+    '---',
+    '# 销售反馈回流',
+    '',
+    `- 回流目标：${input.target}`,
+    `- 赢单：${review.summary.won}`,
+    `- 输单：${review.summary.lost}`,
+    `- 胜率：${review.summary.winRate === null ? '缺失' : `${review.summary.winRate}%`}`,
+    '',
+    '## 可行动反馈',
+    ...(feedback.length > 0 ? feedback.map((item) => `- ${item.reason}：${item.count} 次`) : ['- 无；需要补充原因或人工分类。']),
+    '',
+    '## 下一步',
+    ...nextActions.map((item) => `- ${item}`),
+    '',
+  ].join('\n')
+  return handoff
 }

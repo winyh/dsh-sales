@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { reviewProductSalesHandoff } from '../src/sales.js'
 
 const handoff = {
+  schemaVersion: '1.0',
+  artifactId: 'dsh-product-sales-example-2026-08-21',
   handoffVersion: '1.0',
   artifactType: 'product-sales-handoff',
   handoffFrom: 'dsh-product',

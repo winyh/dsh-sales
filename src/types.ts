@@ -34,6 +34,61 @@ export interface SalesDataset {
   warnings: string[]
 }
 
+export interface CrmImportResult {
+  artifactType: 'sales-crm-import'
+  generatedAt: string
+  source: string
+  rowsRead: number
+  rowsAccepted: number
+  fieldMap: Record<string, string>
+  records: Array<Record<string, Primitive | undefined>>
+  warnings: string[]
+  nextActions: string[]
+}
+
+export interface SalesStageAgingResult {
+  artifactType: 'sales-stage-aging'
+  generatedAt: string
+  source: string
+  asOf: string
+  stageField: string
+  dateField: string
+  stages: Array<{ stage: string; records: number; averageAgeDays: number | null; oldestAgeDays: number | null; missingDate: number }>
+  warnings: string[]
+  nextActions: string[]
+}
+
+export interface SalesWinLossResult {
+  artifactType: 'sales-win-loss-review'
+  generatedAt: string
+  source: string
+  outcomeField: string
+  amountField?: string
+  segmentField?: string
+  summary: { won: number; lost: number; winRate: number | null; wonAmount: number; lostAmount: number }
+  segments: Array<{ segment: string; won: number; lost: number; winRate: number | null; wonAmount: number; lostAmount: number }>
+  feedback: Array<{ target: 'dsh-product' | 'dsh-idea'; reason: string; count: number }>
+  warnings: string[]
+  nextActions: string[]
+}
+
+export interface SalesFeedbackHandoff {
+  schemaVersion: '1.0'
+  artifactId: string
+  artifactType: 'sales-feedback-handoff'
+  handoffFrom: 'dsh-sales'
+  handoffTo: 'dsh-product' | 'dsh-idea' | 'dsh-growth'
+  generatedAt: string
+  source: string
+  target: 'dsh-product' | 'dsh-idea' | 'dsh-growth'
+  summary: SalesWinLossResult['summary']
+  segments: SalesWinLossResult['segments']
+  feedback: SalesWinLossResult['feedback']
+  warnings: string[]
+  nextActions: string[]
+  markdown: string
+}
+
 export interface SalesNote {
   path: string
   title: string
@@ -145,6 +200,8 @@ export interface GeneratedArtifact {
 }
 
 export interface ProductSalesHandoff {
+  schemaVersion: '1.0'
+  artifactId: string
   handoffVersion: string
   artifactType: 'product-sales-handoff'
   handoffFrom: 'dsh-product'
@@ -182,6 +239,8 @@ export interface ProductSalesHandoffReview {
 }
 
 export interface BusinessCommercialHandoff {
+  schemaVersion: '1.0'
+  artifactId: string
   handoffVersion: string
   artifactType: 'commercial-handoff'
   handoffFrom: 'dsh-business'

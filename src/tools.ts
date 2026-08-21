@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readSalesDataset } from './data.js'
 import { jsonValue, renderResult, resultEnvelope, resultSchema, type ResultLineage } from './output.js'
-import { analyzeSalesFunnel, buildSalesOnboarding, forecastPipeline, generatePlaybook, reviewCommercialHandoff, reviewDeal, reviewOffer, reviewProductSalesHandoff } from './sales.js'
+import { analyzeSalesFunnel, analyzeStageAging, buildSalesFeedbackHandoff, buildSalesOnboarding, forecastPipeline, generatePlaybook, normalizeCrmExport, reviewCommercialHandoff, reviewDeal, reviewOffer, reviewProductSalesHandoff, reviewWinLoss } from './sales.js'
 import { replacementDiff } from './markdown.js'
 import type { FileSystemLike, SalesConfig } from './types.js'
 import { auditNoteForTool, readSalesNote, scanSalesVault } from './vault.js'
@@ -43,6 +43,80 @@ async function ensureInsideRoot(fs: FileSystemLike, config: SalesConfig, path: s
 }
 
 export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSystemLike): void {
+  ctx.tools.register(defineTool({
+    name: 'sales_crm_import',
+    description: 'Normalize a user-approved CRM CSV/JSON export into a read-only sales dataset while preserving source fields and field mapping. It never writes to a CRM or imports contact outreach state.',
+    parameters: {
+      path: { type: 'string', required: true, description: 'CRM export under defaultRoot.' },
+      fieldMappingJson: { type: 'string', description: 'Optional JSON object mapping normalized fields to source columns.' },
+    },
+    output: salesOutput(config.maxResultChars),
+    async execute(args, exec) {
+      await ensureInsideRoot(fs, config, args.path, exec.signal)
+      const dataset = await readSalesDataset(fs, config, args.path, exec.signal)
+      const mapping = args.fieldMappingJson ? parseObject(args.fieldMappingJson, 'fieldMappingJson') as Record<string, string> : {}
+      const result = normalizeCrmExport(dataset, mapping)
+      return wrapResult(result, { lineage: [{ source: args.path, fields: Object.values(result.fieldMap) }], nextActions: result.nextActions })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sales_stage_aging',
+    description: 'Analyze stage aging from a local sales export using a creation/stage date and an explicit as-of date. Missing or invalid dates remain visible.',
+    parameters: {
+      path: { type: 'string', required: true, description: 'Sales pipeline dataset under defaultRoot.' },
+      stageField: { type: 'string' },
+      dateField: { type: 'string' },
+      asOf: { type: 'string', description: 'ISO date used as the aging boundary.' },
+    },
+    output: salesOutput(config.maxResultChars),
+    async execute(args, exec) {
+      await ensureInsideRoot(fs, config, args.path, exec.signal)
+      const dataset = await readSalesDataset(fs, config, args.path, exec.signal)
+      const result = analyzeStageAging(dataset, args)
+      return wrapResult(result, { lineage: [{ source: args.path, fields: [result.stageField, result.dateField] }], nextActions: result.nextActions })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sales_win_loss_review',
+    description: 'Review closed-won/closed-lost outcomes by segment and amount, and prepare feedback targets for dsh-product or dsh-idea. It does not infer causality from a reason count.',
+    parameters: {
+      path: { type: 'string', required: true, description: 'Sales export under defaultRoot.' },
+      outcomeField: { type: 'string' },
+      amountField: { type: 'string' },
+      segmentField: { type: 'string' },
+      reasonField: { type: 'string' },
+    },
+    output: salesOutput(config.maxResultChars),
+    async execute(args, exec) {
+      await ensureInsideRoot(fs, config, args.path, exec.signal)
+      const dataset = await readSalesDataset(fs, config, args.path, exec.signal)
+      const result = reviewWinLoss(dataset, args)
+      return wrapResult(result, { lineage: [{ source: args.path }], nextActions: result.nextActions })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sales_feedback_handoff',
+    description: 'Turn a reviewed CRM export into a versioned feedback handoff for dsh-product, dsh-idea or dsh-growth. It carries aggregated outcomes and reasons, not customer contact data.',
+    parameters: {
+      path: { type: 'string', required: true, description: 'Sales export under defaultRoot.' },
+      target: { type: 'string', required: true, enum: ['dsh-product', 'dsh-idea', 'dsh-growth'] },
+      outcomeField: { type: 'string' },
+      amountField: { type: 'string' },
+      segmentField: { type: 'string' },
+      reasonField: { type: 'string' },
+    },
+    output: salesOutput(config.maxResultChars),
+    async execute(args, exec) {
+      await ensureInsideRoot(fs, config, args.path, exec.signal)
+      const dataset = await readSalesDataset(fs, config, args.path, exec.signal)
+      const result = buildSalesFeedbackHandoff({ dataset, target: args.target, options: args })
+      return wrapResult(result, { lineage: [{ source: args.path }], nextActions: result.nextActions })
+    },
+  }))
+
   ctx.tools.register(defineTool({
     name: 'sales_onboarding',
     description: 'Run a read-only sales readiness check across local sales notes and pipeline data. It identifies the current commercial gate and the smallest next actions.',
