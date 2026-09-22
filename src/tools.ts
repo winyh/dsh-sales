@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { handoffParameters, receiveHandoff } from './handoff-receive.js'
 import { readSalesDataset } from './data.js'
 import { jsonValue, renderResult, resultEnvelope, resultSchema, type ResultLineage } from './output.js'
 import { analyzeSalesFunnel, analyzeStageAging, buildSalesFeedbackHandoff, buildSalesOnboarding, forecastPipeline, generatePlaybook, normalizeCrmExport, reviewCommercialHandoff, reviewDeal, reviewOffer, reviewProductSalesHandoff, reviewWinLoss } from './sales.js'
@@ -179,6 +180,11 @@ export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSy
     async execute(args) {
       const parsed = parseObject(args.handoffJson, 'handoffJson')
       const data = typeof parsed.data === 'object' && parsed.data !== null && !Array.isArray(parsed.data) ? parsed.data as Record<string, unknown> : parsed
+      const integrity = reviewArtifact(data, 'commercial-handoff')
+      if (integrity.status !== 'ready' || (typeof parsed === 'object' && parsed !== null && 'data' in parsed && (!('ok' in parsed) || parsed.ok !== true))) {
+        return wrapResult({ artifactType: 'commercial-handoff-review', status: 'blocked', issues: integrity.issues,
+          warnings: integrity.warnings, nextActions: ['先重新生成有效来源，再调用 handoff_receive；不能跳过完整性与有效期检查。'] })
+      }
       const review = reviewCommercialHandoff(data)
       return wrapResult(review, { lineage: review.source ? [{ source: review.source }] : [], nextActions: review.nextActions })
     },
@@ -194,6 +200,11 @@ export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSy
     async execute(args) {
       const parsed = parseObject(args.handoffJson, 'handoffJson')
       const data = typeof parsed.data === 'object' && parsed.data !== null && !Array.isArray(parsed.data) ? parsed.data as Record<string, unknown> : parsed
+      const integrity = reviewArtifact(data, 'product-sales-handoff')
+      if (integrity.status !== 'ready' || (typeof parsed === 'object' && parsed !== null && 'data' in parsed && (!('ok' in parsed) || parsed.ok !== true))) {
+        return wrapResult({ artifactType: 'sales-handoff-review', status: 'blocked', issues: integrity.issues,
+          warnings: integrity.warnings, nextActions: ['先重新生成有效来源，再调用 handoff_receive；不能跳过完整性与有效期检查。'] })
+      }
       const review = reviewProductSalesHandoff(data)
       return wrapResult(review, { lineage: review.source ? [{ source: review.source }] : [], nextActions: review.nextActions })
     },
@@ -268,6 +279,18 @@ export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSy
     async execute(args) {
       const result = generatePlaybook({ title: args.title, targetCustomer: args.targetCustomer, salesMotion: args.salesMotion, valueProposition: args.valueProposition, discoveryQuestions: parseList(args.discoveryQuestions, 'discoveryQuestions'), qualificationCriteria: parseList(args.qualificationCriteria, 'qualificationCriteria'), objections: parseList(args.objections, 'objections'), nextStep: args.nextStep, source: args.source })
       return wrapResult(result, { lineage: args.source ? [{ source: args.source }] : [], nextActions: result.nextActions })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sales_handoff_receive',
+    description: 'Receive a supported upstream artifact with integrity, routing and evidence checks. Produce an owned, dated receipt for one initiative; acceptance is not approval or task completion. Read-only.',
+    parameters: handoffParameters,
+    output: salesOutput(config.maxResultChars),
+    async execute(args, exec) {
+      exec.signal.throwIfAborted()
+      const receipt = receiveHandoff(JSON.parse(args.artifactJson) as unknown, args)
+      return wrapResult(receipt, { nextActions: receipt.nextActions })
     },
   }))
 
