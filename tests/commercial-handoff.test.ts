@@ -26,6 +26,12 @@ describe('commercial handoff review', () => {
     expect(review.decision).toBe('advance')
   })
 
+  it('holds mixed currency results and requests evidence for legacy profitability summaries', () => {
+    expect(reviewCommercialHandoff({ ...handoff, profitabilitySummary: { currency: 'USD' } }).status).toBe('blocked')
+    expect(reviewCommercialHandoff({ ...handoff, profitabilitySummary: { profit: 100 } }).status).toBe('partial')
+    expect(reviewCommercialHandoff({ ...handoff, profitabilitySummary: { currency: 'cny' } }).status).toBe('ready')
+  })
+
   it('blocks an offer without an explicit price floor', () => {
     const review = reviewCommercialHandoff({ ...handoff, offers: [{ ...handoff.offers[0], minimumTransactionPrice: undefined }] })
     expect(review.status).toBe('partial')

@@ -39,6 +39,21 @@ export function normalizeStage(value: unknown): string {
   return aliases[key] ?? (key.replace(/\s+/g, '-') || 'unknown')
 }
 
+function stageProbabilityLookup(json?: string) {
+  const probabilities = new Map(Object.entries(stageProbabilities))
+  if (json !== undefined) {
+    const values: unknown = JSON.parse(json)
+    if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('probabilityJson must be a stage-to-probability object.')
+    for (const [stage, value] of Object.entries(values)) {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+        throw new Error('Probability for ' + stage + ' must be a number between 0 and 1 inclusive. Use 0.7 for 70%.')
+      }
+      probabilities.set(stage, value)
+    }
+  }
+  return (stage: string) => probabilities.get(stage) ?? 0.2
+}
+
 function percent(value: number): number {
   return Math.round(value * 1000) / 10
 }
@@ -52,7 +67,7 @@ export function analyzeSalesFunnel(dataset: SalesDataset, options: { stageField?
   const amountField = findField(dataset.columns, options.amountField, ['amount', 'value', 'revenue', 'deal_value', '金额', '合同金额', '收入'])
   const dateField = findField(dataset.columns, options.dateField, ['close_date', 'expected_close', 'date', '预计成交日', '成交日期'])
   if (!stageField) throw new Error('Could not identify a stage field; provide stageField explicitly')
-  const customProbabilities = options.probabilityJson ? JSON.parse(options.probabilityJson) as Record<string, number> : {}
+  const probabilityFor = stageProbabilityLookup(options.probabilityJson)
   const grouped = new Map<string, { records: number; amount: number }>()
   for (const row of dataset.rows) {
     const stage = normalizeStage(row[stageField])
@@ -66,7 +81,7 @@ export function analyzeSalesFunnel(dataset: SalesDataset, options: { stageField?
   const stages = order.map((stage, index) => {
     const current = grouped.get(stage) ?? { records: 0, amount: 0 }
     const previous = index > 0 ? grouped.get(order[index - 1] ?? '')?.records ?? 0 : 0
-    const probability = customProbabilities[stage] ?? stageProbabilities[stage] ?? 0.2
+    const probability = probabilityFor(stage)
     return {
       stage,
       records: current.records,
@@ -195,6 +210,10 @@ export function reviewCommercialHandoff(input: Record<string, unknown>): Commerc
   for (const [field, value] of [['handoffVersion', handoff.handoffVersion], ['productName', handoff.productName], ['currency', handoff.currency], ['decision', handoff.decision]] as Array<[string, unknown]>) {
     if (!text(value)) missing.push(field)
   }
+  const profitCurrency = text(handoff.profitabilitySummary?.currency)
+  const mixedCurrency = !!profitCurrency && profitCurrency.toUpperCase() !== text(handoff.currency).toUpperCase()
+  if (mixedCurrency) risks.push('盈利复盘与报价币种不一致。')
+  if (handoff.profitabilitySummary && !profitCurrency) missing.push('profitabilitySummary.currency')
   if (handoff.decision !== 'review') missing.push('decision must be review')
   if (!Array.isArray(handoff.offers) || handoff.offers.length === 0) missing.push('offers')
   if (!Array.isArray(handoff.requiredApprovals) || handoff.requiredApprovals.length === 0) missing.push('requiredApprovals')
@@ -210,7 +229,7 @@ export function reviewCommercialHandoff(input: Record<string, unknown>): Commerc
     if (row.status === 'blocked') risks.push(`${text(row.sku)}/${text(row.channel)} 报价状态为 blocked。`)
   }
   if (!text(handoff.source)) risks.push('没有商业分析来源；无法回到价格或成本计算。')
-  const status: ReadinessStatus = risks.some((risk) => risk.includes('不是 commercial-handoff') || risk.includes('来源或目标不正确') || risk.includes('单位贡献为负') || risk.includes('状态为 blocked'))
+  const status: ReadinessStatus = mixedCurrency || handoff.status === 'blocked' || handoff.decision === 'hold' || risks.some((risk) => risk.includes('不是 commercial-handoff') || risk.includes('来源或目标不正确') || risk.includes('单位贡献为负') || risk.includes('状态为 blocked'))
     ? 'blocked'
     : missing.length === 0
       ? 'ready'
@@ -301,7 +320,7 @@ export function forecastPipeline(dataset: SalesDataset, options: { stageField?: 
   const amountField = findField(dataset.columns, options.amountField, ['amount', 'value', 'revenue', 'deal_value', '金额', '合同金额', '收入'])
   const closeDateField = findField(dataset.columns, options.closeDateField, ['close_date', 'expected_close', '预计成交日', '成交日期'])
   if (!stageField) throw new Error('Could not identify a stage field; provide stageField explicitly')
-  const custom = options.probabilityJson ? JSON.parse(options.probabilityJson) as Record<string, number> : {}
+  const probabilityFor = stageProbabilityLookup(options.probabilityJson)
   const asOf = options.asOf ? new Date(options.asOf) : new Date()
   if (Number.isNaN(asOf.getTime())) throw new Error(`Invalid asOf date: ${options.asOf}`)
   const grouped = new Map<string, { records: number; amount: number }>()
@@ -313,7 +332,7 @@ export function forecastPipeline(dataset: SalesDataset, options: { stageField?: 
   for (const row of dataset.rows) {
     const stage = normalizeStage(row[stageField])
     const amount = amountField ? numberValue(row[amountField]) : undefined
-    const probability = custom[stage] ?? stageProbabilities[stage] ?? 0.2
+    const probability = probabilityFor(stage)
     if (amount === undefined) missingAmount += 1
     else { rawAmount += amount; weightedAmount += amount * probability }
     const closeDate = closeDateField ? new Date(valueString(row[closeDateField])) : undefined
@@ -325,7 +344,7 @@ export function forecastPipeline(dataset: SalesDataset, options: { stageField?: 
     grouped.set(stage, current)
   }
   const byStage = [...grouped.entries()].map(([stage, value]) => {
-    const probability = custom[stage] ?? stageProbabilities[stage] ?? 0.2
+    const probability = probabilityFor(stage)
     return { stage, records: value.records, amount: Math.round(value.amount * 100) / 100, probability, weightedAmount: Math.round(value.amount * probability * 100) / 100 }
   }).sort((a, b) => stageOrder.indexOf(a.stage as typeof stageOrder[number]) - stageOrder.indexOf(b.stage as typeof stageOrder[number]))
   const warnings = [...dataset.warnings]

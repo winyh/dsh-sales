@@ -262,6 +262,7 @@ export interface BusinessCommercialHandoff {
   decision: 'review' | 'hold'
   productName: string
   currency: string
+  profitabilitySummary?: { currency?: string }
   offers: Array<{
     sku: string
     channel: string

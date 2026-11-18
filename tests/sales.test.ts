@@ -40,6 +40,18 @@ describe('sales methods', () => {
     expect(result.missingCloseDate).toBe(1)
   })
 
+  it('requires numeric probability ratios in both forecast entry points', () => {
+    const deals = dataset([{ stage: 'proposal', amount: 1000 }])
+    for (const calculate of [
+      (probabilityJson: string) => forecastPipeline(deals, { currency: 'CNY', probabilityJson }).weightedAmount,
+      (probabilityJson: string) => analyzeSalesFunnel(deals, { probabilityJson }).totals.weightedAmount,
+    ]) {
+      for (const value of [0, 0.7, 1]) expect(calculate(JSON.stringify({ proposal: value }))).toBe(1000 * value)
+      for (const value of [70, -0.01, '0.7', null]) expect(() => calculate(JSON.stringify({ proposal: value }))).toThrow('Use 0.7')
+      for (const invalid of ['[]', 'null', '1']) expect(() => calculate(invalid)).toThrow('object')
+    }
+  })
+
   it('blocks an offer without commercial authorization', () => {
     const result = reviewOffer('Starter', { valueEvidence: ['客户预计减少 20% 人工处理时间'], facts: { targetCustomer: '财务团队', problem: '月结慢' } })
     expect(result.decision).toBe('blocked')

@@ -158,7 +158,7 @@ export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSy
       stageField: { type: 'string', description: 'Stage column; inferred when omitted.' },
       amountField: { type: 'string', description: 'Amount column; inferred when omitted.' },
       dateField: { type: 'string', description: 'Expected close date column; inferred when omitted.' },
-      probabilityJson: { type: 'string', description: 'Optional JSON object mapping normalized stage to probability.' },
+      probabilityJson: { type: 'string', description: 'Optional JSON object mapping normalized stages to probabilities from 0 to 1 inclusive. Use 0.7 for 70%.' },
     },
     output: salesOutput(config.maxResultChars),
     async execute(args, exec) {
@@ -250,7 +250,7 @@ export function registerSalesTools(ctx: Context, config: SalesConfig, fs: FileSy
       closeDateField: { type: 'string', description: 'Expected close date column; inferred when omitted.' },
       currency: { type: 'string', description: 'Currency code; defaults to plugin configuration.' },
       asOf: { type: 'string', description: 'ISO date used to identify stale open opportunities.' },
-      probabilityJson: { type: 'string', description: 'Optional JSON object mapping normalized stage to probability.' },
+      probabilityJson: { type: 'string', description: 'Optional JSON object mapping normalized stages to probabilities from 0 to 1 inclusive. Use 0.7 for 70%.' },
     },
     output: salesOutput(config.maxResultChars),
     async execute(args, exec) {
