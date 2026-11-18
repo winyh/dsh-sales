@@ -24,6 +24,18 @@ describe('sales operational analysis', () => {
     expect(result.stages.find((stage) => stage.stage === 'proposal')?.averageAgeDays).toBe(20)
   })
 
+  it('separates genuine zero, missing amounts and known subtotals in handoff summaries', () => {
+    for (const [amounts, total, subtotal, missing] of [
+      [[0], 0, 0, 0], [[''], null, 0, 1], [[50, 'unknown'], null, 50, 1],
+    ] as const) {
+      const rows = amounts.map(amount => ({ outcome: 'won', amount }))
+      const result = reviewWinLoss({ ...dataset, rows })
+      const expected = { won: amounts.length, winRate: 100, wonAmount: total, knownWonAmount: subtotal, missingWonAmounts: missing }
+      expect(result.summary).toMatchObject(expected)
+      expect(result.segments[0]).toMatchObject(expected)
+    }
+  })
+
   it('returns win-loss cohorts and product feedback targets', () => {
     const result = reviewWinLoss(dataset)
     expect(result.summary.winRate).toBe(50)

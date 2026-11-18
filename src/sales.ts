@@ -481,34 +481,54 @@ export function analyzeStageAging(dataset: SalesDataset, options: { stageField?:
   return { artifactType: 'sales-stage-aging', generatedAt: new Date().toISOString(), source: dataset.source, asOf, stageField, dateField, stages, warnings, nextActions: ['优先检查平均或最老停留时间最高的阶段，并结合客户下一步动作复核。'] }
 }
 
+function outcomeCounts() {
+  return { won: 0, lost: 0, knownWonAmount: 0, knownLostAmount: 0, missingWonAmounts: 0, missingLostAmounts: 0 }
+}
+
+function summarizeOutcomes(counts: ReturnType<typeof outcomeCounts>) {
+  const total = counts.won + counts.lost
+  return {
+    ...counts,
+    wonAmount: counts.missingWonAmounts ? null : counts.knownWonAmount,
+    lostAmount: counts.missingLostAmounts ? null : counts.knownLostAmount,
+    winRate: total ? Math.round(counts.won / total * 1000) / 10 : null,
+  }
+}
+
 export function reviewWinLoss(dataset: SalesDataset, options: { outcomeField?: string; amountField?: string; segmentField?: string; reasonField?: string } = {}): SalesWinLossResult {
   const outcomeField = field(dataset.columns, options.outcomeField, ['outcome', 'result', 'win_loss', 'status', '结果', '输赢'])
   const amountField = field(dataset.columns, options.amountField, ['amount', 'value', 'deal_value', '金额', '合同金额'])
   const segmentField = field(dataset.columns, options.segmentField, ['segment', 'industry', 'customer_type', '客户分群', '行业'])
   const reasonField = field(dataset.columns, options.reasonField, ['loss_reason', 'reason', 'unmet_need', '失单原因', '原因', '未满足需求'])
   if (!outcomeField) throw new Error('Could not identify an outcome field; provide outcomeField explicitly')
-  const groups = new Map<string, { won: number; lost: number; wonAmount: number; lostAmount: number }>()
+  const groups = new Map<string, ReturnType<typeof outcomeCounts>>()
   const reasons = new Map<string, number>()
-  let won = 0; let lost = 0; let wonAmount = 0; let lostAmount = 0
+  const totals = outcomeCounts()
   for (const row of dataset.rows) {
     const outcome = valueString(row[outcomeField]).toLowerCase()
     const isWon = ['won', 'closed-won', 'win', '赢单', '成交', '成功'].includes(outcome)
     const isLost = ['lost', 'closed-lost', 'loss', '输单', '失单', '失败'].includes(outcome)
     if (!isWon && !isLost) continue
-    const amount = numberValue(amountField ? row[amountField] : undefined) ?? 0
+    const amount = numberValue(amountField ? row[amountField] : undefined)
     const segment = segmentField ? valueString(row[segmentField]) || '未分群' : '全部'
-    const current = groups.get(segment) ?? { won: 0, lost: 0, wonAmount: 0, lostAmount: 0 }
-    if (isWon) { won += 1; wonAmount += amount; current.won += 1; current.wonAmount += amount }
+    const current = groups.get(segment) ?? outcomeCounts()
+    for (const counts of [totals, current]) {
+      counts[isWon ? 'won' : 'lost'] += 1
+      if (amount === undefined) counts[isWon ? 'missingWonAmounts' : 'missingLostAmounts'] += 1
+      else counts[isWon ? 'knownWonAmount' : 'knownLostAmount'] += amount
+    }
     if (isLost) {
-      lost += 1; lostAmount += amount; current.lost += 1; current.lostAmount += amount
       const reason = reasonField ? valueString(row[reasonField]) : ''
       if (reason) reasons.set(reason, (reasons.get(reason) ?? 0) + 1)
     }
     groups.set(segment, current)
   }
-  const segments = [...groups.entries()].map(([segment, value]) => ({ segment, ...value, winRate: value.won + value.lost > 0 ? Math.round((value.won / (value.won + value.lost)) * 1000) / 10 : null }))
+  const segments = [...groups.entries()].map(([segment, value]) => ({ segment, ...summarizeOutcomes(value) }))
   const feedback = [...reasons.entries()].map(([reason, count]) => ({ target: /功能|产品|缺少|集成|体验/i.test(reason) ? 'dsh-product' as const : 'dsh-idea' as const, reason, count })).sort((a, b) => b.count - a.count)
-  return { artifactType: 'sales-win-loss-review', generatedAt: new Date().toISOString(), source: dataset.source, outcomeField, ...(amountField ? { amountField } : {}), ...(segmentField ? { segmentField } : {}), summary: { won, lost, winRate: won + lost > 0 ? Math.round((won / (won + lost)) * 1000) / 10 : null, wonAmount, lostAmount }, segments, feedback, warnings: [...dataset.warnings, ...(won + lost < dataset.rows.length ? ['部分记录没有可识别的赢输结果，未纳入胜率。'] : [])], nextActions: feedback.length > 0 ? ['将高频失单原因分别交给 dsh-product 或 dsh-idea，形成产品变更或新发现。'] : ['补充失单原因字段，再分析可行动的反馈回流。'] }
+  const warnings = [...dataset.warnings]
+  if (totals.won + totals.lost < dataset.rows.length) warnings.push('部分记录没有可识别的赢输结果，未纳入胜率。')
+  if (totals.missingWonAmounts || totals.missingLostAmounts) warnings.push('部分金额缺失或无法解析，已知金额小计仅包含可解析记录。')
+  return { artifactType: 'sales-win-loss-review', generatedAt: new Date().toISOString(), source: dataset.source, outcomeField, ...(amountField ? { amountField } : {}), ...(segmentField ? { segmentField } : {}), summary: summarizeOutcomes(totals), segments, feedback, warnings, nextActions: feedback.length > 0 ? ['将高频失单原因分别交给 dsh-product 或 dsh-idea，形成产品变更或新发现。'] : ['补充失单原因字段，再分析可行动的反馈回流。'] }
 }
 
 export function buildSalesFeedbackHandoff(input: {

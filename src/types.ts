@@ -58,6 +58,18 @@ export interface SalesStageAgingResult {
   nextActions: string[]
 }
 
+interface OutcomeSummary {
+  won: number
+  lost: number
+  winRate: number | null
+  wonAmount: number | null
+  lostAmount: number | null
+  knownWonAmount: number
+  knownLostAmount: number
+  missingWonAmounts: number
+  missingLostAmounts: number
+}
+
 export interface SalesWinLossResult {
   artifactType: 'sales-win-loss-review'
   generatedAt: string
@@ -65,8 +77,8 @@ export interface SalesWinLossResult {
   outcomeField: string
   amountField?: string
   segmentField?: string
-  summary: { won: number; lost: number; winRate: number | null; wonAmount: number; lostAmount: number }
-  segments: Array<{ segment: string; won: number; lost: number; winRate: number | null; wonAmount: number; lostAmount: number }>
+  summary: OutcomeSummary
+  segments: Array<OutcomeSummary & { segment: string }>
   feedback: Array<{ target: 'dsh-product' | 'dsh-idea'; reason: string; count: number }>
   warnings: string[]
   nextActions: string[]
